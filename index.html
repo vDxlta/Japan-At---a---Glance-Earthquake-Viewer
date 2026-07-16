@@ -537,7 +537,7 @@
   // PASS_HASH below is a PLACEHOLDER and matches nothing -- generate your own:
   //   crypto.subtle.digest('SHA-256', new TextEncoder().encode('yourpassword'))
   //     .then(b => console.log(Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('')))
-  const PASS_HASH = 'REPLACE_ME_WITH_YOUR_OWN_SHA256_HASH';
+  const PASS_HASH = 'ceb800583dca7117002039395165dafe789164708008dae5fd14a53d8534e3de';
 
   async function sha256Hex(str){
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
