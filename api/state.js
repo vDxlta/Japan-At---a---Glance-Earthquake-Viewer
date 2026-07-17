@@ -1,13 +1,26 @@
-import { Redis } from '@upstash/redis';
+import { createClient } from 'redis';
 
-const kv = Redis.fromEnv();
 const KEY = 'eew:current';
+
+let client;
+async function getClient() {
+  if (!client) {
+    client = createClient({ url: process.env.REDIS_URL });
+    client.on('error', (err) => console.error('Redis client error', err));
+  }
+  if (!client.isOpen) {
+    await client.connect();
+  }
+  return client;
+}
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
+  const redis = await getClient();
 
   if (req.method === 'GET') {
-    const state = (await kv.get(KEY)) || { idle: true };
+    const raw = await redis.get(KEY);
+    const state = raw ? JSON.parse(raw) : { idle: true };
     return res.status(200).json(state);
   }
 
@@ -22,7 +35,7 @@ export default async function handler(req, res) {
       ? { idle: true, updatedAt: Date.now() }
       : { ...body, idle: false, updatedAt: Date.now() };
 
-    await kv.set(KEY, state);
+    await redis.set(KEY, JSON.stringify(state));
     return res.status(200).json(state);
   }
 

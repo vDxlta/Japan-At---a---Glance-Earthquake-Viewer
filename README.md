@@ -6,13 +6,12 @@ The test panel (gear icon on the live page) now pushes test data to a shared
 device that has the bare page open (no query params) picks it up within ~4
 seconds, not just the one that submitted the form.
 
-This needs an Upstash Redis database attached to the project (Vercel's native
-"KV" product was folded into the Upstash marketplace integration), one-time setup:
-1. Vercel dashboard → this project → **Storage** tab → **Upstash** (under
-   Marketplace Database Providers) → create a Redis database.
-2. Connect it to this project. Vercel automatically adds the required
-   environment variables (`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`)
-   — no manual copying needed.
+This needs a Redis database attached to the project (Vercel's native "KV"
+product was folded into marketplace integrations), one-time setup:
+1. Vercel dashboard → this project → **Storage** tab → **Redis** (under
+   Marketplace Database Providers) → create a database.
+2. Connect it to this project. Vercel automatically adds the `REDIS_URL`
+   environment variable — no manual copying needed.
 3. Redeploy (Vercel usually does this automatically once the database is linked).
 
 Until that's done, `/api/state` will return a 500 error and the test panel/
