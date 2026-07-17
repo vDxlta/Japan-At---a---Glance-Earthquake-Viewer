@@ -1,5 +1,6 @@
-import { kv } from '@vercel/kv';
+import { Redis } from '@upstash/redis';
 
+const kv = Redis.fromEnv();
 const KEY = 'eew:current';
 
 export default async function handler(req, res) {
