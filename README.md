@@ -1,3 +1,24 @@
+# Japan At-a-Glance — Setup
+
+## Live test sync (shared state across devices)
+The test panel (gear icon on the live page) now pushes test data to a shared
+`/api/state` endpoint instead of just changing the local URL — so every
+device that has the bare page open (no query params) picks it up within ~4
+seconds, not just the one that submitted the form.
+
+This needs a Vercel KV database attached to the project, one-time setup:
+1. Vercel dashboard → this project → **Storage** tab → **Create Database** → **KV**.
+2. Accept the defaults and connect it to this project. Vercel automatically
+   adds the required environment variables (`KV_REST_API_URL`, `KV_REST_API_TOKEN`,
+   etc.) — no manual copying needed.
+3. Redeploy (Vercel usually does this automatically once the KV store is linked).
+
+Until that's done, `/api/state` will return a 500 error and the test panel/
+live sync won't work — the rest of the site (idle/direct-link rendering) is
+unaffected either way.
+
+---
+
 # JMA EEW Watcher — Setup
 
 ## 1. Install

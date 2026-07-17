@@ -236,7 +236,7 @@
       <div class="error" id="passError">Incorrect password.</div>
       <button class="primary" id="passSubmit">Unlock</button>
       <button class="secondary" id="passCancel">Cancel</button>
-      <div class="note">This is a static page with no server — this gate only stops casual link-clicking, it's not real security. Change PASS_HASH in the source before relying on it for anything beyond keeping this off strangers' radar.</div>
+      <div class="note">Test data is pushed to a shared endpoint, so it updates every device that has this page open, not just this one.</div>
     </div>
     <div class="modal" id="modalForm" style="display:none;">
       <h3>LOAD TEST DATA</h3>
@@ -278,8 +278,7 @@
 
 <script>
   const params = new URLSearchParams(window.location.search);
-  const get = (k, d='') => params.get(k) ?? d;
-  const bool = (k) => { const v = (get(k,'false')+'').toLowerCase(); return v==='true' || v==='1'; };
+  const urlHasData = [...params.keys()].length > 0;
 
   const placeDict = {
     '北海道':'Hokkaido','青森':'Aomori','岩手':'Iwate','宮城':'Miyagi','秋田':'Akita','山形':'Yamagata','福島':'Fukushima',
@@ -350,71 +349,86 @@
     '7':'var(--s7)','U':'var(--sU)'
   };
 
-  const hasData = !!(get('hypocenter','') || get('mag','') || get('title',''));
-  const cancelled = bool('iscancel');
-  const active = hasData && !cancelled;
-  const idle = !hasData;
-
-  const strip = document.getElementById('alarmStrip');
-  if(idle){
-    strip.classList.add('idle');
-    document.getElementById('alarmLabel').textContent = 'MONITORING';
-    document.getElementById('alarmSub').textContent = 'NO WARNING ACTIVE';
-  } else if(cancelled){
-    strip.classList.add('cancelled');
-    document.getElementById('alarmLabel').textContent = 'EARTHQUAKE EARLY WARNING';
-    document.getElementById('alarmSub').textContent = 'PREVIOUS WARNING CANCELLED';
-  } else {
-    document.getElementById('alarmLabel').textContent = 'EARTHQUAKE EARLY WARNING';
-    document.getElementById('alarmSub').textContent = 'ACTIVE';
+  function boolVal(v){
+    if (typeof v === 'boolean') return v;
+    const s = ((v ?? '') + '').toLowerCase();
+    return s === 'true' || s === '1';
   }
 
-  const rawTitle = get('title','');
-  const titleEnText = translateTitle(rawTitle, cancelled);
-  document.getElementById('titleJp').textContent = idle ? 'No active warning' : titleEnText;
-  document.getElementById('titleEn').textContent = idle
-    ? 'Japan Meteorological Agency · Earthquake Early Warning'
-    : (cancelled ? 'Cancelled · Japan Meteorological Agency' : (titleEnText.includes('Warning)') ? 'Warning · Japan Meteorological Agency' : 'Forecast · Japan Meteorological Agency'));
+  // Mutable state the seismograph animation reads every frame, kept in sync by render().
+  let animState = { idle: true, cancelled: false, intensityKey: 'U' };
+  // Bumped on every render() call so an in-flight countdown tick() from a
+  // superseded render knows to stop instead of fighting the new one.
+  let countdownGen = 0;
 
-  document.getElementById('serialBadge').textContent = idle ? 'Idle' : ('Report #' + get('serial','–') + (bool('isfinal') ? ' · Final' : ''));
+  function render(d){
+    d = d || {};
+    const hasData = !!(d.hypocenter || d.mag || d.title);
+    const cancelled = boolVal(d.iscancel);
+    const idle = !hasData;
 
-  const intensity = normalizeIntensity(get('maxint',''));
-  const shindoBadge = document.getElementById('shindoBadge');
-  document.getElementById('shindoNum').textContent = idle ? '–' : intensity.short;
-  shindoBadge.style.background = colorFor[intensity.key];
-  shindoBadge.classList.toggle('dim', idle || cancelled);
+    animState = { idle, cancelled, intensityKey: normalizeIntensity(d.maxint || '').key };
 
-  const hypoRaw = get('hypocenter','');
-  const hypoEl = document.getElementById('hypocenter');
-  hypoEl.textContent = idle ? 'Nothing to report' : (translateJP(hypoRaw) || 'Epicenter unknown');
-  hypoEl.classList.toggle('dim', idle);
-  const lat = get('lat',''), lng = get('lng','');
-  document.getElementById('hypocenterEn').textContent = idle ? '—' : ((lat && lng) ? `${lat}°N, ${lng}°E` : 'Coordinates unavailable');
+    const strip = document.getElementById('alarmStrip');
+    strip.classList.remove('idle','cancelled');
+    if(idle){
+      strip.classList.add('idle');
+      document.getElementById('alarmLabel').textContent = 'MONITORING';
+      document.getElementById('alarmSub').textContent = 'NO WARNING ACTIVE';
+    } else if(cancelled){
+      strip.classList.add('cancelled');
+      document.getElementById('alarmLabel').textContent = 'EARTHQUAKE EARLY WARNING';
+      document.getElementById('alarmSub').textContent = 'PREVIOUS WARNING CANCELLED';
+    } else {
+      document.getElementById('alarmLabel').textContent = 'EARTHQUAKE EARLY WARNING';
+      document.getElementById('alarmSub').textContent = 'ACTIVE';
+    }
 
-  document.getElementById('magVal').innerHTML = (idle ? '–' : get('mag','–')) + '<span class="stat-unit">M</span>';
-  document.getElementById('depthVal').innerHTML = (idle ? '–' : get('depth','–')) + '<span class="stat-unit">km</span>';
+    const rawTitle = d.title || '';
+    const titleEnText = translateTitle(rawTitle, cancelled);
+    document.getElementById('titleJp').textContent = idle ? 'No active warning' : titleEnText;
+    document.getElementById('titleEn').textContent = idle
+      ? 'Japan Meteorological Agency · Earthquake Early Warning'
+      : (cancelled ? 'Cancelled · Japan Meteorological Agency' : (titleEnText.includes('Warning)') ? 'Warning · Japan Meteorological Agency' : 'Forecast · Japan Meteorological Agency'));
 
-  document.getElementById('tEventId').textContent = idle ? '—' : get('eventid','—');
-  document.getElementById('tOrigin').textContent = idle ? '—' : get('origintime','—');
-  document.getElementById('tAnnounced').textContent = idle ? '—' : get('announcedtime','—');
-  document.getElementById('tSource').textContent = idle ? '—' : (translateJP(get('source','')) || '—');
-  document.getElementById('tCoords').textContent = idle ? '—' : ((lat && lng) ? `${lat}, ${lng}` : '—');
+    document.getElementById('serialBadge').textContent = idle ? 'Idle' : ('Report #' + (d.serial ?? '–') + (boolVal(d.isfinal) ? ' · Final' : ''));
 
-  function setPill(id, on, label){
-    const el = document.getElementById(id);
-    el.textContent = label + (on ? ' \u2713' : ' \u2014');
-    el.className = 'pill ' + (on ? 'on' : 'off');
-  }
-  setPill('pillWarn', !idle && bool('iswarn'), 'WARN');
-  setPill('pillFinal', !idle && bool('isfinal'), 'FINAL');
-  setPill('pillCancel', cancelled, 'CANCEL');
+    const intensity = normalizeIntensity(d.maxint || '');
+    const shindoBadge = document.getElementById('shindoBadge');
+    document.getElementById('shindoNum').textContent = idle ? '–' : intensity.short;
+    shindoBadge.style.background = colorFor[intensity.key];
+    shindoBadge.classList.toggle('dim', idle || cancelled);
 
-  try{
-    const raw = get('areas','');
-    if(raw && !idle){
-      const areas = JSON.parse(decodeURIComponent(raw));
-      if(Array.isArray(areas) && areas.length){
-        const list = document.getElementById('areasList');
+    const hypoRaw = d.hypocenter || '';
+    const hypoEl = document.getElementById('hypocenter');
+    hypoEl.textContent = idle ? 'Nothing to report' : (translateJP(hypoRaw) || 'Epicenter unknown');
+    hypoEl.classList.toggle('dim', idle);
+    const lat = d.lat ?? '', lng = d.lng ?? '';
+    document.getElementById('hypocenterEn').textContent = idle ? '—' : ((lat && lng) ? `${lat}°N, ${lng}°E` : 'Coordinates unavailable');
+
+    document.getElementById('magVal').innerHTML = (idle ? '–' : (d.mag ?? '–')) + '<span class="stat-unit">M</span>';
+    document.getElementById('depthVal').innerHTML = (idle ? '–' : (d.depth ?? '–')) + '<span class="stat-unit">km</span>';
+
+    document.getElementById('tEventId').textContent = idle ? '—' : (d.eventid ?? '—');
+    document.getElementById('tOrigin').textContent = idle ? '—' : (d.origintime ?? '—');
+    document.getElementById('tAnnounced').textContent = idle ? '—' : (d.announcedtime ?? '—');
+    document.getElementById('tSource').textContent = idle ? '—' : (translateJP(d.source || '') || '—');
+    document.getElementById('tCoords').textContent = idle ? '—' : ((lat && lng) ? `${lat}, ${lng}` : '—');
+
+    function setPill(id, on, label){
+      const el = document.getElementById(id);
+      el.textContent = label + (on ? ' ✓' : ' —');
+      el.className = 'pill ' + (on ? 'on' : 'off');
+    }
+    setPill('pillWarn', !idle && boolVal(d.iswarn), 'WARN');
+    setPill('pillFinal', !idle && boolVal(d.isfinal), 'FINAL');
+    setPill('pillCancel', cancelled, 'CANCEL');
+
+    try{
+      let areas = d.areas;
+      if(typeof areas === 'string' && areas){ areas = JSON.parse(decodeURIComponent(areas)); }
+      const list = document.getElementById('areasList');
+      if(Array.isArray(areas) && areas.length && !idle){
         list.innerHTML = '';
         areas.forEach(a=>{
           const chiiki = a.Chiiki || a.chiiki || '';
@@ -426,19 +440,32 @@
             <span class="area-arrive">${a.Arrive || a.arrive || ''}</span></span>`;
           list.appendChild(row);
         });
+      } else {
+        list.innerHTML = '<div class="areas-empty">No areas reported.</div>';
       }
-    }
-  }catch(e){ /* leave default empty state */ }
+    }catch(e){ /* leave default empty state */ }
 
-  (function(){
-    if(idle){ return; }
-    const obslat = parseFloat(get('obslat','')), obslng = parseFloat(get('obslng',''));
+    countdownGen++;
+    const myGen = countdownGen;
+    const cdMain = document.getElementById('cdMain');
+    const cdSub = document.getElementById('cdSub');
+    const ring = document.getElementById('ringFg');
+    const txt = document.getElementById('ringTxt');
+
+    const obslat = parseFloat(d.obslat ?? ''), obslng = parseFloat(d.obslng ?? '');
     const eqlat = parseFloat(lat), eqlng = parseFloat(lng);
-    const originStr = get('origintime','');
-    if(isNaN(obslat) || isNaN(obslng) || isNaN(eqlat) || isNaN(eqlng) || !originStr){ return; }
+    const originStr = d.origintime || '';
+    const haveCountdown = !idle && !isNaN(obslat) && !isNaN(obslng) && !isNaN(eqlat) && !isNaN(eqlng) && originStr;
+    if(!haveCountdown){
+      cdMain.textContent = 'No warning in progress';
+      cdSub.textContent = 'Countdown appears when a warning with coordinates arrives';
+      txt.textContent = '–';
+      ring.style.strokeDashoffset = 213.6;
+      return;
+    }
 
     function haversineKm(lat1,lon1,lat2,lon2){
-      const R=6371, toRad=d=>d*Math.PI/180;
+      const R=6371, toRad=x=>x*Math.PI/180;
       const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
       const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
       return R*2*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
@@ -450,18 +477,17 @@
 
     const totalTravelSec = distKm / S_VELOCITY;
     const circumference = 213.6;
-    const ring = document.getElementById('ringFg');
-    const txt = document.getElementById('ringTxt');
-    document.getElementById('cdMain').textContent = `~${Math.round(distKm)} km from set location`;
-    document.getElementById('cdSub').textContent = `Rough S-wave estimate (${S_VELOCITY} km/s) — not official`;
+    cdMain.textContent = `~${Math.round(distKm)} km from set location`;
+    cdSub.textContent = `Rough S-wave estimate (${S_VELOCITY} km/s) — not official`;
 
     function tick(){
+      if(myGen !== countdownGen) return; // a newer render() has taken over
       const elapsedSec = (Date.now() - originMs) / 1000;
       const remain = totalTravelSec - elapsedSec;
       if(remain <= 0){
         txt.textContent = '0s';
         ring.style.strokeDashoffset = 0;
-        document.getElementById('cdMain').textContent = 'Shaking may have arrived';
+        cdMain.textContent = 'Shaking may have arrived';
         return;
       }
       txt.textContent = Math.ceil(remain) + 's';
@@ -470,8 +496,9 @@
       requestAnimationFrame(()=>setTimeout(tick, 250));
     }
     tick();
-  })();
+  }
 
+  // Seismograph runs continuously and just reflects whatever render() last set in animState.
   (function(){
     const canvas = document.getElementById('trace');
     const ctx = canvas.getContext('2d');
@@ -489,13 +516,14 @@
     const points = [];
     const N = 240;
     for(let i=0;i<N;i++) points.push(0);
-
     let t = 0;
-    const intensityBoost = idle ? 0.06 : ({'U':0.15,'1':0.2,'2':0.3,'3':0.45,'4':0.65,'5m':0.85,'5p':1.0,'6m':1.2,'6p':1.4,'7':1.6}[intensity.key] || 0.2);
-    const lineColor = idle ? '#3d7bd9' : (cancelled ? '#ffb020' : getComputedStyle(document.documentElement).getPropertyValue('--alarm').trim());
 
     function step(){
       t += 1;
+      const { idle, cancelled, intensityKey } = animState;
+      const intensityBoost = idle ? 0.06 : ({'U':0.15,'1':0.2,'2':0.3,'3':0.45,'4':0.65,'5m':0.85,'5p':1.0,'6m':1.2,'6p':1.4,'7':1.6}[intensityKey] || 0.2);
+      const lineColor = idle ? '#3d7bd9' : (cancelled ? '#ffb020' : getComputedStyle(document.documentElement).getPropertyValue('--alarm').trim());
+
       const ambient = (Math.sin(t*0.08)*0.15 + (Math.random()-0.5)*0.12);
       const burst = (!idle && !cancelled && t % 140 < 18) ? Math.sin((t%140)*0.9) * intensityBoost * (Math.random()*0.6+0.7) : 0;
       points.push(ambient*(idle?0.5:1) + burst);
@@ -569,8 +597,8 @@
     }
   });
 
-  document.getElementById('loadTest').addEventListener('click', ()=>{
-    const qs = new URLSearchParams({
+  document.getElementById('loadTest').addEventListener('click', async ()=>{
+    const payload = {
       title: document.getElementById('fTitle').value,
       mag: document.getElementById('fMag').value,
       depth: document.getElementById('fDepth').value,
@@ -584,10 +612,42 @@
       iswarn: document.getElementById('fWarn').checked,
       isfinal: document.getElementById('fFinal').checked,
       iscancel: document.getElementById('fCancel').checked
-    });
-    window.location.search = qs.toString();
+    };
+    await fetch('/api/state', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    backdrop.classList.remove('open');
   });
-  document.getElementById('loadIdle').addEventListener('click', ()=>{ window.location.search = ''; });
+  document.getElementById('loadIdle').addEventListener('click', async ()=>{
+    await fetch('/api/state', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({reset:true}) });
+    backdrop.classList.remove('open');
+  });
+
+  // Direct-link URLs (e.g. from the iOS Shortcut) still render immediately from
+  // their own query params, one-shot, same as before -- no shared-state involved.
+  if(urlHasData){
+    const d = {};
+    for(const [k,v] of params.entries()) d[k] = v;
+    render(d);
+  } else {
+    // Bare page (kiosk/plain tab left open): paint idle immediately, then poll
+    // shared state so every such instance updates together when a test (or a
+    // real event, if the watcher is later wired to push here too) comes in.
+    render({});
+    let lastStamp = null;
+    async function poll(){
+      try{
+        const res = await fetch('/api/state', { cache:'no-store' });
+        if(!res.ok) return;
+        const data = await res.json();
+        const stamp = data.updatedAt ?? null;
+        if(stamp !== lastStamp){
+          lastStamp = stamp;
+          render(data.idle ? {} : data);
+        }
+      }catch(e){ /* network hiccup -- try again next tick */ }
+    }
+    poll();
+    setInterval(poll, 4000);
+  }
 </script>
 </body>
 </html>
