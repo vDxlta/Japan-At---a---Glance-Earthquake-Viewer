@@ -123,7 +123,13 @@
   #testBtn:hover{ opacity:1; }
   .modal-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; z-index:100; padding:20px; }
   .modal-backdrop.open{ display:flex; }
-  .modal{ background:var(--panel); border:1px solid var(--panel-line); border-radius:10px; padding:20px; width:100%; max-width:420px; max-height:86vh; overflow-y:auto; }
+  .modal{ position:relative; background:var(--panel); border:1px solid var(--panel-line); border-radius:10px; padding:20px; width:100%; max-width:420px; max-height:86vh; overflow-y:auto; }
+  .modal-x{
+    position:absolute; top:12px; right:12px; width:26px; height:26px; border-radius:50%;
+    background:transparent; border:1px solid var(--panel-line); color:var(--muted);
+    display:flex; align-items:center; justify-content:center; font-size:16px; line-height:1; cursor:pointer;
+  }
+  .modal-x:hover{ color:var(--text); border-color:var(--muted); }
   .modal h3{ font-size:14px; margin-bottom:12px; letter-spacing:0.04em; }
   .modal label{ display:block; font-size:11px; color:var(--muted); margin:10px 0 4px; letter-spacing:0.05em; text-transform:uppercase; }
   .modal input, .modal select, .modal textarea{
@@ -230,6 +236,7 @@
   <div id="testBtn" title="Test mode">⚙</div>
   <div class="modal-backdrop" id="modalBackdrop">
     <div class="modal" id="modalPass">
+      <div class="modal-x" id="modalXPass" title="Close">&times;</div>
       <h3>TEST MODE — PASSWORD REQUIRED</h3>
       <label>Password</label>
       <input type="password" id="passInput" autocomplete="off">
@@ -239,6 +246,7 @@
       <div class="note">Test data is pushed to a shared endpoint, so it updates every device that has this page open, not just this one.</div>
     </div>
     <div class="modal" id="modalForm" style="display:none;">
+      <div class="modal-x" id="modalXForm" title="Close">&times;</div>
       <h3>LOAD TEST DATA</h3>
       <label>Title</label>
       <select id="fTitle">
@@ -585,6 +593,9 @@
     }
   });
   document.getElementById('passCancel').addEventListener('click', ()=> backdrop.classList.remove('open'));
+  document.getElementById('modalXPass').addEventListener('click', ()=> backdrop.classList.remove('open'));
+  document.getElementById('modalXForm').addEventListener('click', ()=> backdrop.classList.remove('open'));
+  backdrop.addEventListener('click', (e)=>{ if(e.target === backdrop) backdrop.classList.remove('open'); });
   document.getElementById('passSubmit').addEventListener('click', async ()=>{
     const val = document.getElementById('passInput').value;
     const hash = await sha256Hex(val);
